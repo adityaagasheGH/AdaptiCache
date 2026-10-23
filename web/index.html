@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdaptiCache</title>
+  <meta name="description" content="A self-tuning adaptive page replacement simulator, compared live against FIFO, LRU and OPT.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='6' width='6' height='20' rx='2' fill='none' stroke='%23a59fe0' stroke-width='1.5' stroke-dasharray='3 2'/%3E%3Crect x='9' y='6' width='6' height='20' rx='2' fill='%239a92ec'/%3E%3Crect x='17' y='6' width='6' height='20' rx='2' fill='%234537c9'/%3E%3Crect x='25' y='6' width='6' height='20' rx='2' fill='%234537c9'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <a class="brand" href="#/case" aria-label="AdaptiCache home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        AdaptiCache
+      </a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#/case" data-route="case">The case</a>
+        <a href="#/simulate" data-route="simulate">Simulator</a>
+        <a href="#/results" data-route="results">Results</a>
+        <a href="#/evaluation" data-route="evaluation">Evaluation</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================== THE CASE ============================== -->
+    <section class="view" id="view-case" data-view="case">
+      <div class="wrap">
+        <div class="hero">
+          <div>
+            <h1>A long scan should not cost you your hot pages.</h1>
+            <p class="lede">LRU throws out pages you use every second to make room for pages you will never touch again.
+              AdaptiCache remembers what it evicted, notices when it got that wrong, and shifts its own balance.</p>
+            <div class="actions">
+              <a class="btn btn-primary" href="#/simulate">Open the simulator</a>
+              <a class="btn" href="#how">See how it decides</a>
+            </div>
+          </div>
+          <figure class="hero-stage" id="hero-stage" aria-label="Live run of the scan phase">
+            <div class="stage-caption">
+              <span id="hero-caption">Loading the mixed workload…</span>
+              <span id="hero-step"></span>
+            </div>
+            <div id="hero-cacheline"></div>
+            <div class="race" id="hero-race"></div>
+          </figure>
+        </div>
+
+        <!-- Why fixed policies fail -->
+        <div class="block" id="why">
+          <div class="block-head">
+            <h2>Each classic policy bets on one assumption</h2>
+            <p>When the workload breaks that assumption, the policy keeps making the same mistake. These three
+              small runs come straight from the engines in this project.</p>
+          </div>
+          <div class="trio">
+            <article class="story c-fifo">
+              <h3><span class="algo c-fifo">FIFO</span></h3>
+              <p>Assumes the oldest page is the least useful. It never looks at how pages are used, and can get
+                worse when you give it more memory.</p>
+              <div class="figure"><div class="chart" id="belady-chart"></div></div>
+              <p class="verdict" id="belady-verdict"></p>
+            </article>
+            <article class="story c-lru">
+              <h3><span class="algo c-lru">LRU</span></h3>
+              <p>Assumes the recent past predicts the near future. A one-time scan looks recent, so it pushes out
+                the three pages this program uses most.</p>
+              <div class="figure" id="scan-demo"></div>
+              <p class="verdict" id="scan-verdict"></p>
+            </article>
+            <article class="story c-opt">
+              <h3><span class="algo c-opt opt">OPT</span></h3>
+              <p>Makes the fewest faults possible by evicting the page needed furthest in the future. No operating
+                system knows the future, so OPT is the yardstick, not a policy you can run.</p>
+              <div class="figure"><p class="small muted">From the textbook string, 3 frames:</p>
+                <p id="opt-note" class="small" style="margin-top:8px"></p></div>
+              <p class="verdict" id="opt-verdict"></p>
+            </article>
+          </div>
+        </div>
+
+        <!-- How AdaptiCache decides -->
+        <div class="block" id="how">
+          <div class="block-head">
+            <h2>How AdaptiCache decides</h2>
+            <p>Memory is split into a recency side (T1, pages seen once) and a frequency side (T2, pages seen
+              twice or more). The target size of T1 is a single number, <b>p</b>. Two ghost lists, B1 and B2,
+              remember only the numbers of recently evicted pages, so the engine can tell when it evicted the wrong
+              kind of page. Step through 16 references with 3 frames.</p>
+          </div>
+          <div class="explainer">
+            <div class="panel">
+              <div class="tape" id="ex-tape" role="list" aria-label="Reference string"></div>
+              <div id="ex-cacheline"></div>
+              <div class="side-by-side">
+                <div>
+                  <p class="counter"><b id="ex-arc-faults">0</b>faults, AdaptiCache</p>
+                </div>
+                <div>
+                  <div class="frames-row" id="ex-lru-frames"></div>
+                  <p class="counter" style="margin-top:6px"><b id="ex-lru-faults">0</b>faults, LRU in the same 3 frames</p>
+                </div>
+              </div>
+              <p class="step-note" id="ex-note" aria-live="polite"></p>
+              <div class="stepper">
+                <button class="icon-btn" id="ex-prev" aria-label="Previous step"><svg viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button class="btn-primary" id="ex-next">Next reference</button>
+                <button class="btn-quiet" id="ex-reset">Start over</button>
+                <span class="pos" id="ex-pos"></span>
+              </div>
+            </div>
+            <ol class="rules" id="ex-rules">
+              <li data-case="cold miss"><span><b>New page: it enters T1.</b> If memory is full, the side that is over
+                its target gives up its oldest page, which becomes a ghost.</span></li>
+              <li data-case="T1 hit"><span><b>Second use: promote to T2.</b> Being used twice is evidence of
+                lasting value, so the page moves to the frequency side.</span></li>
+              <li data-case="T2 hit"><span><b>Further use: stay in T2.</b> It moves to the fresh end of T2, far from
+                eviction.</span></li>
+              <li data-case="B1 ghost hit"><span><b>Ghost in B1: raise p.</b> A once-used page came back soon after
+                eviction. Recency deserved more room.</span></li>
+              <li data-case="B2 ghost hit"><span><b>Ghost in B2: lower p.</b> A frequent page came back soon after
+                eviction. Frequency deserved more room.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Evidence -->
+        <div class="block" id="evidence">
+          <div class="block-head">
+            <h2>Where the faults are saved</h2>
+            <p>The mixed workload changes character four times. Splitting the fault count by phase shows exactly
+              where adaptivity earns its keep, and where it gives a little back.</p>
+          </div>
+          <div class="table-scroll"><table class="data" id="phase-table"></table></div>
+          <p class="callout" style="margin-top:20px" id="phase-callout"></p>
+          <div class="actions" style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap">
+            <a class="btn btn-primary" href="#/results">See the full results</a>
+            <a class="btn" href="#/evaluation">Check it across 40 runs</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SIMULATOR ============================== -->
+    <section class="view hidden" id="view-simulate" data-view="simulate">
+      <div class="wrap">
+        <div class="block" style="padding-top:40px">
+          <div class="block-head" style="margin-bottom:0">
+            <h2>Simulator</h2>
+            <p>All four algorithms run on the identical reference string. Step through it, or jump straight to the
+              moments the adaptive engine changes its mind.</p>
+          </div>
+        </div>
+
+        <form class="sim-controls" id="sim-form" autocomplete="off">
+          <label class="field span-2">Workload
+            <select id="f-preset"></select>
+          </label>
+          <label class="field" id="f-seed-wrap">Seed
+            <input type="number" id="f-seed" min="0" max="999999" value="7">
+          </label>
+          <label class="field" id="f-length-wrap">References
+            <input type="number" id="f-length" min="20" max="5000" step="10" value="600">
+          </label>
+          <label class="field">Frames
+            <input type="number" id="f-frames" min="1" max="64" value="8">
+          </label>
+          <label class="field">Ghost list capacity <span id="f-ghost-out" class="muted"></span>
+            <input type="range" id="f-ghost" min="0" max="8" value="8">
+          </label>
+          <div class="run">
+            <button type="submit" class="btn-primary" id="f-run">Run all four</button>
+          </div>
+          <div class="wide custom-input hidden" id="f-custom">
+            <label class="field">Reference string
+              <textarea id="f-refs" spellcheck="false" placeholder="7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1"></textarea>
+            </label>
+            <div class="row">
+              <label class="btn" for="f-file">Import trace file</label>
+              <input type="file" id="f-file" accept=".txt,.csv,.trace" class="hidden">
+              <span>Plain text or CSV. A CSV uses its <b>page</b> column, otherwise its first column.</span>
+            </div>
+          </div>
+          <p class="wide small muted" id="f-about"></p>
+          <div class="wide hidden" id="f-error"></div>
+        </form>
+
+        <div id="sim-stage" class="hidden">
+          <div class="player" id="player">
+            <div class="buttons">
+              <button class="icon-btn" id="p-reset" aria-label="Back to step 1" title="Back to start (Home)"><svg viewBox="0 0 20 20"><path d="M5 4v12M15 4 8 10l7 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="icon-btn" id="p-back" aria-label="Step back" title="Step back (Left arrow)"><svg viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="icon-btn play" id="p-play" aria-label="Play" title="Play or pause (Space)"><svg viewBox="0 0 20 20" id="p-play-icon"><path d="M6 4v12l10-6z" fill="currentColor"/></svg></button>
+              <button class="icon-btn" id="p-fwd" aria-label="Step forward" title="Step forward (Right arrow)"><svg viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="scrub">
+              <div class="where"><span>Step <b id="p-step">1</b> of <span id="p-total">0</span>, page <b id="p-page"></b></span><span id="p-phase"></span></div>
+              <input type="range" id="p-scrub" min="0" max="0" value="0" aria-label="Scrub through the trace">
+            </div>
+            <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+              <div class="jumps">
+                <button id="p-prev-ghost" title="Previous ghost hit (G with Shift)">Previous ghost hit</button>
+                <button id="p-next-ghost" title="Next ghost hit (G)">Next ghost hit</button>
+              </div>
+              <label class="speed">Speed <input type="range" id="p-speed" min="1" max="60" value="8" aria-label="Playback speed in steps per second"></label>
+            </div>
+          </div>
+
+          <div>
+            <div class="reftape" id="reftape" aria-hidden="true"></div>
+            <div class="phase-strip" id="phase-strip"></div>
+            <div class="phase-strip-labels" id="phase-strip-labels"></div>
+          </div>
+
+          <div class="arc-panel">
+            <div class="arc-panel-head">
+              <h3>Inside AdaptiCache</h3>
+              <div class="pstat">
+                <span><span class="big" id="sim-p">0</span> <span class="muted small">p, the T1 target</span></span>
+                <span id="sim-case"></span>
+              </div>
+            </div>
+            <div id="sim-cacheline"></div>
+          </div>
+
+          <div class="sim-body">
+            <div class="lanes" id="lanes"></div>
+            <aside class="side">
+              <div class="panel">
+                <h3>What happened at this step</h3>
+                <div class="notes" id="sim-notes" aria-live="polite"></div>
+              </div>
+              <div class="panel">
+                <h3>Moments worth pausing on</h3>
+                <div class="events-list" id="sim-events"></div>
+              </div>
+              <p class="kbd">Keys: <kbd>Space</kbd> play or pause, <kbd>←</kbd> <kbd>→</kbd> step, <kbd>G</kbd> next ghost hit, <kbd>Home</kbd> start</p>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== RESULTS ============================== -->
+    <section class="view hidden" id="view-results" data-view="results">
+      <div class="wrap">
+        <div class="print-only">
+          <h2>AdaptiCache: results report</h2>
+          <p class="small">Operating Systems course project. Aditya Agashe (24BYB0028), Hemant Goyal (24BYB0059), Shiv Patel (24BYB0002).</p>
+        </div>
+        <div class="results-head">
+          <div>
+            <h2 id="r-title">Results</h2>
+            <p class="meta" id="r-meta"></p>
+          </div>
+          <div class="exports">
+            <button id="x-trace">Download trace CSV</button>
+            <button id="x-summary">Download summary CSV</button>
+            <button id="x-json">Download JSON</button>
+            <button id="x-print" class="btn-primary">Save as PDF</button>
+          </div>
+        </div>
+        <p class="headline-claim" id="r-claim"></p>
+
+        <div class="block" style="padding-top:32px">
+          <div class="table-scroll"><table class="data" id="r-summary"></table></div>
+        </div>
+
+        <div class="block" style="padding-top:24px">
+          <div class="chart-panel">
+            <header>
+              <h3>Cumulative page faults</h3>
+              <p>Lower is better. Shaded bands are workload phases; hover to read exact values.</p>
+            </header>
+            <div class="legend" id="r-legend"></div>
+            <div class="chart" id="r-cum"></div>
+          </div>
+        </div>
+
+        <div class="block grid-2" style="padding-top:24px">
+          <div class="chart-panel">
+            <header>
+              <h3>Faults saved against LRU</h3>
+              <p>LRU faults minus AdaptiCache faults so far.</p>
+            </header>
+            <div class="chart" id="r-lead"></div>
+          </div>
+          <div class="chart-panel">
+            <header>
+              <h3>The tuner, p, over time</h3>
+              <p>p rises on B1 ghost hits (recency wins) and falls on B2 ghost hits.</p>
+            </header>
+            <div class="chart" id="r-p"></div>
+          </div>
+        </div>
+
+        <div class="block" style="padding-top:24px">
+          <h3 style="margin-bottom:12px">Faults by phase</h3>
+          <div class="table-scroll"><table class="data" id="r-phases"></table></div>
+        </div>
+        <p class="loading" id="r-empty">Run a simulation first. The mixed workload loads automatically.</p>
+      </div>
+    </section>
+
+    <!-- ============================== EVALUATION ============================== -->
+    <section class="view hidden" id="view-evaluation" data-view="evaluation">
+      <div class="wrap">
+        <div class="block" style="padding-top:40px">
+          <div class="block-head">
+            <h2>Evaluate your own reference string</h2>
+            <p>Type or paste a reference string, or import a trace file. Every test on this page runs on exactly that
+              string: all four engines, every memory size, the ghost-list ablation and the correctness checks. The
+              Simulator and Results pages switch to the same string.</p>
+          </div>
+          <form class="sim-controls" id="ev-form" autocomplete="off" style="margin-top:0">
+            <label class="field wide">Reference string
+              <textarea id="ev-refs" rows="3" spellcheck="false" placeholder="7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1"></textarea>
+            </label>
+            <label class="field">Frames
+              <input type="number" id="ev-frames" min="1" max="64" value="8">
+            </label>
+            <label class="field">Ghost list capacity <span id="ev-ghost-out" class="muted"></span>
+              <input type="range" id="ev-ghost" min="0" max="8" value="8">
+            </label>
+            <label class="field span-2">Or start from an example
+              <select id="ev-example"><option value="">Choose an example…</option></select>
+            </label>
+            <div class="run">
+              <button type="submit" class="btn-primary" id="ev-run">Evaluate this string</button>
+            </div>
+            <div class="wide custom-input">
+              <div class="row">
+                <label class="btn" for="ev-file">Import trace file</label>
+                <input type="file" id="ev-file" accept=".txt,.csv,.trace" class="hidden">
+                <span>Plain text or CSV, up to 5,000 references. A CSV uses its <b>page</b> column, otherwise its first column.</span>
+              </div>
+            </div>
+            <div class="wide hidden" id="ev-error"></div>
+          </form>
+        </div>
+
+        <div id="ev-body" class="hidden">
+          <div class="block" style="padding-top:48px">
+            <div class="results-head" style="padding-top:0">
+              <div>
+                <h2 id="ev-title"></h2>
+                <p class="meta" id="ev-meta"></p>
+              </div>
+              <div class="exports">
+                <a class="btn" href="#/simulate">Step through it</a>
+                <a class="btn" href="#/results">See all charts</a>
+              </div>
+            </div>
+            <p class="headline-claim" id="ev-claim"></p>
+            <div class="table-scroll" style="margin-top:24px"><table class="data" id="ev-summary"></table></div>
+          </div>
+
+          <div class="block">
+            <div class="block-head">
+              <h2>What your string looks like</h2>
+              <p>Which policy wins depends on the shape of the string. These are the properties that decide it.</p>
+            </div>
+            <dl class="facts" id="ev-profile"></dl>
+            <ul class="hints" id="ev-hints"></ul>
+          </div>
+
+          <div class="block">
+            <div class="block-head">
+              <h2>Does it hold at every memory size?</h2>
+              <p>Your string run again with every memory size from 1 frame upward. If AdaptiCache only won at the
+                size you picked, the curves would cross back. As memory grows, every policy converges toward the
+                unavoidable first-touch faults.</p>
+            </div>
+            <div class="chart-panel">
+              <header>
+                <div class="legend" id="ev-sweep-legend"></div>
+                <p>The dotted line marks the size you chose.</p>
+              </header>
+              <div class="chart" id="ev-sweep"></div>
+            </div>
+            <p class="callout" id="ev-sweep-note" style="margin-top:20px"></p>
+          </div>
+
+          <div class="block">
+            <div class="block-head">
+              <h2>Do the ghost lists matter here?</h2>
+              <p>An ablation on your string: the same engine with its ghost lists shrunk, then switched off. With no
+                ghosts there is no feedback, so p never moves.</p>
+            </div>
+            <div class="table-scroll"><table class="data" id="ev-ablation"></table></div>
+            <p class="callout" id="ev-ablation-note" style="margin-top:20px"></p>
+          </div>
+
+          <div class="block">
+            <div class="block-head">
+              <h2>Are the engines correct on this string?</h2>
+              <p>These checks run on the server against every trace produced above, at every memory size.</p>
+            </div>
+            <ul class="checks" id="ev-checks"></ul>
+            <p class="small muted" id="ev-time" style="margin-top:12px"></p>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="block-head">
+            <h2>Compare with the built-in workloads</h2>
+            <p>Optional. Runs the four synthetic workloads with 10 different seeds each at 8 frames (40 strings),
+              to show whether the pattern on your string holds in general.</p>
+          </div>
+          <button id="ev-bench-run">Run the 40-string benchmark</button>
+          <div id="ev-bench" class="hidden" style="margin-top:20px">
+            <div class="table-scroll"><table class="data" id="e-bench"></table></div>
+            <p class="callout" id="e-honest" style="margin-top:20px"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>AdaptiCache, Operating Systems course project</span>
+      <span class="team">
+        <span><b>Aditya Agashe</b> 24BYB0028</span>
+        <span><b>Hemant Goyal</b> 24BYB0059</span>
+        <span><b>Shiv Patel</b> 24BYB0002</span>
+      </span>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
