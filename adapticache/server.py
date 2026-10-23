@@ -115,7 +115,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "AdaptiCache/1.0"
 
     def log_message(self, fmt, *args):
-        if self.server.verbose:
+        if getattr(self.server, "verbose", False):
             super().log_message(fmt, *args)
 
     def _send(self, status, body, ctype, extra=None):
@@ -147,9 +147,13 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _dispatch(self, body):
-        path = urlparse(self.path).path
+        url = urlparse(self.path)
+        path = url.path
+        query = parse_qs(url.query)
+        if "route" in query:  # on Vercel, vercel.json rewrites /api/<route> to /api/index?route=<route>
+            path = "/api/" + query["route"][0]
         if path == "/api/export":
-            kind = parse_qs(urlparse(self.path).query).get("kind", ["trace"])[0]
+            kind = query.get("kind", ["trace"])[0]
             result = api_simulate(body)
             text = trace_csv(result) if kind == "trace" else summary_csv(result)
             name = f"adapticache-{kind}.csv"

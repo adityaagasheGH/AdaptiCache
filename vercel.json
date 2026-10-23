@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "web",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "adapticache/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:route", "destination": "/api/index?route=:route" }
+  ]
+}
